@@ -92,9 +92,9 @@ To verify the Cron service and script execution:
 
 - Adjust the `network_ranges` variable in the Python file to match your target range.
 - Consider using specific Class ranges (A, B, C) for faster scans:
-  - Class A: 10.0.0.0/8
-  - Class B: 172.16.0.0/12
-  - Class C: 192.168.0.0/16
+  - Class A: 10.0.0.0/24
+  - Class B: 172.16.0.0/24
+  - Class C: 192.168.0.0/24
 
  ## Version
 - This is version 1 of the Network Scanner script. Updates and improvements are planned for future versions.
