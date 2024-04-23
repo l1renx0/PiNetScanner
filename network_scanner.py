@@ -38,7 +38,7 @@ def scan_networks(networks, output_file):
     print(f"Results appended to {output_file}")
 
 # Network areas to scan
-network_ranges = ['10.0.0.0/16','192.168.0.0/16','172.16.0.0/12']
+network_ranges = ['10.0.0.0/24','192.168.0.0/24','172.16.0.0/24']
 
 if __name__ == "__main__":
     scan_networks(network_ranges, 'scan_results.txt')
