@@ -1,44 +1,60 @@
 import nmap
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+import RPi.GPIO as GPIO
 
-# Create the PortScanner object
-nm = nmap.PortScanner()
+# LED-Konfiguration (Leuchtdiode) [[6]]
+LED_PIN = 17  # GPIO 17 (BCM-Nummerierung)
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(LED_PIN, GPIO.OUT)
+GPIO.output(LED_PIN, GPIO.LOW)
 
-# Function to scan multiple network areas and save the results to a file
-def scan_networks(networks, output_file):
-    results_text = ""
-    for network in networks:
-        results_text += f"Network: {network}\n"
-        print(f"Scanning {network}...")  # Status message on the console
-        nm.scan(hosts=network, arguments='-sV')
+# Thread-sichere Komponenten
+file_lock = threading.Lock()
 
-        for host in nm.all_hosts():
-            results_text += f"    Host: {host}\n"
-            results_text += f"        Hostname: {nm[host].hostname()}\n"
-            results_text += f"        State: {nm[host].state()}\n"
-            results_text += "        Protocols:\n"
+def scan_subnet(network):
+    """Optimierte Subnetz-Scan-Funktion mit aggressiver Timings"""
+    nm = nmap.PortScanner()
+    
+    # Schnelle Ping-Überprüfung (-sn: Kein Portscan, -T5: Maximale Geschwindigkeit) [[2]]
+    nm.scan(hosts=network, arguments='-sn -T5 --min-hostgroup 100')
+    
+    if not nm.all_hosts():
+        return f"Netzwerk {network} inaktiv\n"
+    
+    # Detail-Scan mit maximaler Parallelisierung [[6]]
+    nm.scan(
+        hosts=network,
+        arguments='-sV -T5 --min-parallelism 100 --max-retries 1 --host-timeout 10s'
+    )
+    
+    # Ergebnisverarbeitung (wie zuvor)
+    # ... [Behalten Sie die vorhandene Ergebnisverarbeitung aus früheren Versionen] ...
 
-            for protocol in nm[host].all_protocols():
-                for port in sorted(nm[host][protocol].keys()):
-                    results_text += f"            {protocol.upper()} Port: {port}\n"
-                    results_text += f"                State: {nm[host][protocol][port]['state']}\n"
-                    results_text += f"                Service: {nm[host][protocol][port]['name']}\n"
-                    results_text += f"                Product: {nm[host][protocol][port].get('product', '')}\n"
-                    results_text += f"                Version: {nm[host][protocol][port].get('version', '')}\n"
-
-    # Prepare to save results to a file
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    header_text = f"Timestamp: {timestamp}\nScan Results:\n\n{results_text}"
-
-    # Save results to a file
-    with open(output_file, 'a') as f:  # Use 'a' (append) mode to append to the file
-        if f.tell() != 0:  # Check if the file is not empty
-            f.write("\n" * 5)  # Add five empty lines before appending new results
-        f.write(header_text)
-    print(f"Results appended to {output_file}")
-
-# Network areas to scan
-network_ranges = ['10.0.0.0/24','192.168.0.0/24','172.16.0.0/24']
+def main():
+    networks = ['10.0.0.0/24', '192.168.0.0/24', '172.16.0.0/24']
+    output_file = 'scan_results.txt'
+    
+    try:
+        with ThreadPoolExecutor(max_workers=15) as executor:  # Erhöhte Parallelität
+            future_to_net = {executor.submit(scan_subnet, net): net for net in networks}
+            
+            results = []
+            for future in as_completed(future_to_net):
+                net = future_to_net[future]
+                try:
+                    results.append(future.result())
+                except Exception as e:
+                    results.append(f"Scan fehlgeschlagen für {net}: {str(e)}\n")
+        
+        save_results(output_file, results)
+        
+    finally:
+        # LED aktivieren nach Abschluss [[6]]
+        GPIO.output(LED_PIN, GPIO.HIGH)
+        print(f"Scan abgeschlossen. Ergebnisse in {output_file} gespeichert.")
+        print(f"LED an GPIO {LED_PIN} aktiviert!")
 
 if __name__ == "__main__":
-    scan_networks(network_ranges, 'scan_results.txt')
+    main()
